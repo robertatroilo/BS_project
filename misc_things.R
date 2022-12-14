@@ -46,3 +46,4 @@ dim(lds)[1]
 
 x11()
 image(t(m))
+
