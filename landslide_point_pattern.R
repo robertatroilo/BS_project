@@ -1,6 +1,6 @@
 library(sf)
 library(rgdal)
-fname <- "ENTLI.gdb.zip"
+fname <- "../ENTLI.gdb.zip"
 fname
 
 #fname <- "HLC (Up to Year 2016).gdb" #CATHCMENT
@@ -56,7 +56,7 @@ x11()
 ggplot(lds_coastal) + geom_sf()
 
 
-
+x11()
 ggplot(lds,aes(fill=HEADELEV)) + geom_sf() 
 
 
@@ -67,18 +67,19 @@ lds_from_2000 = landslides[which(landslides$YEAR_1 > "2000"),]
 
 lds = lds_from_2000
 #POINT PATTERN
-library(maptools)#
+library(maptools)
 library(spatstat)
+
+
 p.sp  <- as(lds, "Spatial")  # Create Spatial* object
 lds.ppp <- as(p.sp, "ppp")      # Create ppp object
-
 
 #p.sf.utm <- st_transform(lds, 32619) # project from geographic to UTM
 #p.sp  <- as(p.sf.utm, "Spatial")      # Create Spatial* object
 #p.ppp <- as(p.sp, "ppp")              # Create ppp object
 class(lds.ppp)
 
-
+# WE DON'T NEED THESE COVARIATES SINCE WE'RE PROVIDING DATA 
 GenDat_pp <- function(df.ppp, dim, plotdat = TRUE){
   
   # Define the window of interest
@@ -102,8 +103,9 @@ GenDat_pp <- function(df.ppp, dim, plotdat = TRUE){
   Lambda <- as.vector(t(qcounts)) # We have to use t() as we need to construct the vector with the column first
   
   if(plotdat == TRUE){
+    x11()
     par(mfrow=c(1,2), mar=c(2,2,1,1), mgp=c(1,0.5,0))
-    plot(im(gridcov), main = 'Covariate')
+    #plot(im(gridcov), main = 'Covariate')
     plot(dens, main = 'Intensity')
   }
   # Return a list with which I can play with
@@ -112,6 +114,17 @@ GenDat_pp <- function(df.ppp, dim, plotdat = TRUE){
 
 pp = GenDat_pp(lds.ppp,c(20,20),TRUE)
 
+
+################## NATE ########################
+# i don't think we need the function above 
+
+#creating `box` for our coords to fit inside based on easting and northing coords
+#this box is a crude estimate for encapsulating hong kong - USED LATER MAYBE?
+nate_dim = as.integer(c(max(lds$NORTHING)-min(lds$NORTHING), max(lds$EASTING)-min(lds$EASTING))/1000)
+dens <- density(lds.ppp)
+x11()
+par(mfrow=c(1,2), mar=c(2,2,1,1), mgp=c(1,0.5,0))
+plot(dens, main = 'Intensity')
 
 
 
