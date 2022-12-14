@@ -22,7 +22,7 @@ class(lds.ppp)
 
 #creating `box` for our coords to fit inside based on easting and northing coords
 #this box is a crude estimate for encapsulating hong kong - USED LATER MAYBE?
-rf = 1000
+rf = 1000 #rf is a resize factor, we can't keep coords in units of `m` as it exhausts memory -> rf=1000 scales from `m` to `km`
 dim = as.integer(c(max(lds$NORTHING)-min(lds$NORTHING), max(lds$EASTING)-min(lds$EASTING))/rf) + 1
 dim 
 
