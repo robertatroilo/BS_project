@@ -209,6 +209,8 @@ sum(rmse(grid$intensity, grid$pred_stan))
 ### TO DO to try to improve the model:
 
 # - change pixel size
+# - change prior on lambda
+# - change hyperparameters (beta0, beta1, ...)
 # - change the covariates
 # - create a model with all the non categorical covariates
 # - consider landslides before 2000
