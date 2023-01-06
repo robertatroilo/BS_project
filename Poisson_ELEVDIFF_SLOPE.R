@@ -10,7 +10,7 @@ library(OpenImageR)
 
 #Load data
 #----
-fname <- "ENTLI.gdb.zip"
+fname <- "../ENTLI.gdb.zip"
 fname
 st_layers(fname)
 
@@ -56,7 +56,8 @@ y0 <- seq(win$yrange[1], win$yrange[2],
 x0 <- seq(win$xrange[1], win$xrange[2],
           length=spatstat.options()$npixel[1])
 
-
+#would rename this like changeResolution or something 
+#just the mean of the feature over the discretized grid 
 define_covariate <- function(northing, easting, npixel = n_quadr, feature){
   covar <- matrix(data = 0, nrow = npixel, ncol = npixel)
   count <- matrix(data = 0, nrow = npixel, ncol = npixel)
@@ -130,17 +131,17 @@ genDat_pp3 <- function(covar4, covar5, b0, b4, b5, dim, plotdat = TRUE){
   # We count the number of points in each grid cell, plot it and make a vector out of it
   qcounts <- quadratcount(pp, ny=n_quadr, nx=n_quadr)
   Lambda <- as.vector(t(qcounts))
-  lambda_to_plot = im(flipImage(as.matrix(im(Lambda,xcol=x0,yrow=y0))))
+  lambda_to_plot = im(flipImage(as.matrix(im(Lambda,xcol=x0,yrow=y0)))) #nice 
   
   #Plot the point pattern simulated and the covariates pattern
   if(plotdat == TRUE){
-    par(mfrow=c(3,2), mar=c(0.5,0.5,0.5,0.5), mgp=c(1,0.5,0))
+    par(mfrow=c(2,2), mar=c(0.5,0.5,0.5,0.5), mgp=c(1,0.5,0))
     plot(im(covar4), main = 'ELE_DIFF')
     plot(im(covar5), main = 'SLOPE')
     plot(density(lds.ppp), main = 'Real Pattern')
     plot(density(pp), main = 'Generated point pattern')
-    plot(im(flipImage(as.matrix(im(real_lambda,xcol=x0,yrow=y0)))),main="Real Lambda")
-    plot(lambda_to_plot, main = 'Generated Lambda')
+    #plot(im(flipImage(as.matrix(im(real_lambda,xcol=x0,yrow=y0)))),main="Real Lambda")
+    #plot(lambda_to_plot, main = 'Generated Lambda')
     
   }
   
@@ -186,7 +187,7 @@ generated quantities{
   lambda_rep = exp(beta0 + beta1 * x1 + beta2 * x2);
 }'
 
-
+#why not start these at 0 like normal?
 stan_data3 = list(n = length(pp3$Lambda), x1 = as.vector(t(pp3$covar4)), 
                   x2 = as.vector(t(pp3$covar5)), y = pp3$Lambda, 
                   b0 = b0, b1 = b4, b2 = b5)
@@ -199,13 +200,34 @@ fit_stan3 <- stan(model_code = ppm_stan3, data = stan_data3,
 print(fit_stan3, pars = c('beta0', 'beta1', 'beta2'))
 plot(fit_stan3, pars = c('beta0', 'beta1', 'beta2'))
 
+######## NATE SANITY CHECK ###################
+#manually reconstruct the grid lambda in a different way and compare to chain mean
+#just using our model def... 
+
+beta0_rep3 = rstan::extract(fit_stan3)['beta0']
+mean_beta0_rep3 = mean(beta0_rep3$beta0)
+
+beta1_rep3 = rstan::extract(fit_stan3)['beta1']
+mean_beta1_rep3 = mean(beta1_rep3$beta1)
+
+beta2_rep3 = rstan::extract(fit_stan3)['beta2']
+mean_beta2_rep3 = mean(beta2_rep3$beta2)
+
+x1 = as.vector(t(pp3$covar4))
+x2 = as.vector(t(pp3$covar5))
+
+mu = exp(mean_beta0_rep3 + mean_beta1_rep3*x1 + mean_beta2_rep3*x2)
+#add this plot to chris'
+#################################################
+
 lambda_rep3 <- as.data.frame(rstan::extract(fit_stan3)['lambda_rep'])
 mean_lambda_rep3 <- apply(lambda_rep3, 2, 'mean')
 
 par(mfrow=c(2,2),mar=c(1,1,1,1))
 plot(im(flipImage(as.matrix(im(real_lambda,xcol=x0,yrow=y0)))),main="Real Lambda")
-plot(im((as.matrix(im(mean_lambda_rep3,xcol=x0,yrow=y0)))),main="Pred Lambda")
 plot(density(lds.ppp),main="Real Intensity")
+plot(im((as.matrix(im(mean_lambda_rep3,xcol=x0,yrow=y0)))),main="Pred Lambda")
+plot(im(as.matrix(im(mu,xcol=x0,yrow=y0))), main="Nate Lambda") #nate
 
 rmse <- function(true, observed){sqrt((true - observed)^2)}
 sum(rmse(grid$lambda_gendata, grid$pred))
@@ -215,7 +237,7 @@ sum(rmse(grid$lambda_gendata, grid$pred))
 
 #------------------------------------------------
 #Stan Prediction on the real lds point pattern (not the simulated one pp3$pp)
-qcounts_real <- quadratcount(lds.ppp, ny=n_quadr, nx=n_quadr)
+qcounts_real <- quadratcount(lds.ppp, ny=n_quadr, nx=n_quadr) 
 real_lambda = as.vector(t(qcounts_real))
 
 stan_data3 = list(n = length(real_lambda), x1 = as.vector(t(covar4)), 
