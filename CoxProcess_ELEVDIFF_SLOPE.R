@@ -140,14 +140,55 @@ stan_data3 = list(n = length(real_lambda), x1 = as.vector(t(covar4)),
                   b0 = b0, b1 = b4, b2 = b5)
 
 fit_stan3 <- stan(model_code = ppm_stan3, data = stan_data3, 
-                  warmup = 2000, iter = 15000, chains = 4)
+                  warmup = 4000, iter = 8000, chains = 4)
 
 
 print(fit_stan3, pars = c('beta0', 'beta1', 'beta2','sigma_noise'))
 plot(fit_stan3, pars = c('beta0', 'beta1', 'beta2','sigma_noise'))
 
+
 lambda_rep3 <- as.data.frame(rstan::extract(fit_stan3)['lambda_rep'])
 mean_lambda_rep3 <- apply(lambda_rep3, 2, 'mean')
+
+############# plotting the chains ###############3
+beta0_rep3 = rstan::extract(fit_stan3)['beta0']
+mean_beta0_rep3 = mean(beta0_rep3$beta0)
+
+beta1_rep3 = rstan::extract(fit_stan3)['beta1']
+mean_beta1_rep3 = mean(beta1_rep3$beta1)
+
+beta2_rep3 = rstan::extract(fit_stan3)['beta2']
+mean_beta2_rep3 = mean(beta2_rep3$beta2)
+
+x11()
+par(mfrow=c(2,3))
+plot(density(beta0_rep3$beta0), main="", xlab="Beta0")
+abline(v=c(quantile(beta0_rep3$beta0, 0.025), mean_beta0_rep3, quantile(beta0_rep3$beta0, 0.975)), 
+       col = c('blue', 'red', 'blue'), lty=c(2,1,2))
+plot(density(beta1_rep3$beta1), main="", xlab="Beta1")
+abline(v=c(quantile(beta1_rep3$beta1, 0.025), mean_beta1_rep3, quantile(beta1_rep3$beta1, 0.975)), 
+       col = c('blue', 'red', 'blue'), lty=c(2,1,2))
+plot(density(beta2_rep3$beta2), main="", xlab="Beta2")
+abline(v=c(quantile(beta2_rep3$beta2, 0.025), mean_beta2_rep3, quantile(beta2_rep3$beta2, 0.975)), 
+       col = c('blue', 'red', 'blue'), lty=c(2,1,2))
+
+
+plot(seq(1,length(beta0_rep3$beta0)), beta0_rep3$beta0, type='l', xlab="iter", ylab='val')
+plot(seq(1,length(beta1_rep3$beta1)), beta1_rep3$beta1, type='l', xlab="iter", ylab='val')
+plot(seq(1,length(beta2_rep3$beta2)), beta2_rep3$beta2, type='l', xlab="iter", ylab='val')
+
+
+#plot for the noise 
+x11()
+par(mfrow=c(2,1))
+sigma_rep3 = rstan::extract(fit_stan3)['sigma_noise']
+mean_sigma_rep3 = mean(sigma_rep3$sigma_noise)
+plot(density(beta2_rep3$beta2), main="", xlab="Beta2")
+abline(v=c(quantile(sigma_rep3$sigma_noise, 0.025), mean_sigma_rep3, quantile(sigma_rep3$sigma_noise, 0.975)), 
+       col = c('blue', 'red', 'blue'), lty=c(2,1,2))
+plot(seq(1,length(sigma_rep3$sigma_noise)), sigma_rep3$sigma_noise, type='l', xlab="iter", ylab='val')
+
+#############################
 
 
 library(OpenImageR)
