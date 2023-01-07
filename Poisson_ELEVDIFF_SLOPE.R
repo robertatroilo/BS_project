@@ -218,6 +218,13 @@ x2 = as.vector(t(pp3$covar5))
 
 mu = exp(mean_beta0_rep3 + mean_beta1_rep3*x1 + mean_beta2_rep3*x2)
 #add this plot to chris'
+
+#CODE FOR PLOTTING CHAIN AND DENSITY 
+x11()
+par(mfrow=c(2,1))
+plot(seq(1,length(beta0_rep3$beta0)), beta0_rep3$beta0, type='l', xlab="iter", ylab='val')
+plot(density(beta0_rep3$beta0))
+
 #################################################
 
 lambda_rep3 <- as.data.frame(rstan::extract(fit_stan3)['lambda_rep'])
