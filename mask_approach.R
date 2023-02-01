@@ -22,31 +22,49 @@ u_NA = union(u_NA,which(lds_from_2000_with_NA$SLOPE == 9999))
 lds_from_2000=lds_from_2000_with_NA[-u_NA,]
 lds = lds_from_2000
 
+########## 2.5 chris code for utm to lon/lat ##########
+#chris is insanely productive holy 
+#from UTM to lat long
+
+lat.long.df <- data.frame(lds$EASTING, lds$NORTHING) 
+coordinates(lat.long.df) <-  ~lds.EASTING + lds.NORTHING
+proj4string(lat.long.df)
+proj4string(lat.long.df) <- CRS("+init=epsg:2326")
+head(lat.long.df)
+dist.location <- spTransform(lat.long.df, CRS("+init=epsg:4326"))
+head(dist.location)
+
+head(dist.location@coords)
+
+
 
 ######## 3. PRELIM SPATIAL OBJECTS  ##########
-p.sp  <- as(lds, "Spatial")  # Create Spatial* object
-lds.ppp <- as(p.sp, "ppp")      # Create ppp object
-
-#plot(p.sp)
-#plot(lds.ppp, which.marks = "ELE_DIFF")
-
 #super cool (thanks chris)
 hk <- readShapePoly("./hk_boundaries/hh544xg3454.shp")
 hkw = as.owin(hk)
 hkw = owin(hkw$xrange, hkw$yrange) #the old window preserves boundary info but we want grid 
 hkw
 
-win = as.owin(lds.ppp)
+#p.sp  <- as(lds, "Spatial")  # Create Spatial* object
+#lds.ppp <- as(p.sp, "ppp")      # Create ppp object
+#win = owin(lds.ppp)
+
+features = c("SLOPE","COVER","HEADELEV","TAILELEV", "ELE_DIFF", "CLASS") #read data dict 
+lds.ppp = ppp(dist.location@coords[,1], dist.location@coords[,2], hkw, marks=lds[features]) #use hk window
+lds.ppp = unique(lds.ppp)
+
+plot(lds.ppp, which.marks = "ELE_DIFF")
 
 
 #choose a window size preserving the relative dimensions of hk 
-n_quadr = 13
+win = hkw
+n_quadr = 15
 r = diff(win$yrange)/diff(win$xrange)
 
 spatstat.options(npixel=c(n_quadr,ceiling(n_quadr*r)))
 spatstat.options()$npixel
 
-ref = ppp(lds$EASTING, lds$NORTHING, win) 
+ref = ppp(lds.ppp$x, lds.ppp$y, win) 
 q <- quadratcount(lds.ppp, ny=spatstat.options()$npixel[2], nx=spatstat.options()$npixel[1])
 
 #x11()
