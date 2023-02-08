@@ -10,7 +10,9 @@ fname <- "../ENTLI.gdb.zip"
 ######## 1. LOADING IN THE DATA  ##########
 # consider landslides since 2000
 landslides = st_read(fname, "ENTLI_Crown")
-lds_from_2000_with_NA = landslides[which(landslides$YEAR_1 > "2000"),]
+
+#c("2000", "2001", "2002")
+lds_from_2000_with_NA = landslides[which(landslides$YEAR_1 %in% c("2000", "2001", "2002")),]
 
 
 ######## 2. DATA  CLEANING ##########
@@ -54,15 +56,18 @@ lds.ppp = unique(lds.ppp)
 
 #choose a window size preserving the relative dimensions of hk 
 win = hkw
-n_quadr = 15
+n_quadr = 20
 r = diff(win$yrange)/diff(win$xrange)
 
-spatstat.options(npixel=c(n_quadr,ceiling(n_quadr*r)))
+spatstat.options(npixel=c(ceiling(n_quadr*r), n_quadr))  #n_quadr is ref for number of cols/x range 
 spatstat.options()$npixel
 
 ref = ppp(lds.ppp$x, lds.ppp$y, win) 
-q <- quadratcount(lds.ppp, ny=spatstat.options()$npixel[2], nx=spatstat.options()$npixel[1])
+q <- quadratcount(lds.ppp, ny=spatstat.options()$npixel[1], nx=spatstat.options()$npixel[2])
+dim(q)
 
+plot(ref)
+plot(q, add=T)
 
 ########## 4. generate mask from hk shapefile  #########
 #chris again
@@ -71,14 +76,14 @@ grid = spsample(hk, 2500,type="regular")
 coords = grid@coords
 
 hk_coords.ppp = ppp(coords[,1], coords[,2], hkw)
-hk.q = quadratcount(hk_coords.ppp, ny=spatstat.options()$npixel[2], nx=spatstat.options()$npixel[1])
+hk.q = quadratcount(hk_coords.ppp, ny=spatstat.options()$npixel[1], nx=spatstat.options()$npixel[2])
 
 #define mask as points which are non-zero in the actual shapefile 
-mask = which(as.vector(hk.q)!=0)
+mask = which(as.vector(t(hk.q), )!=0)
 mask
 
-q.real = as.vector(q)
-q.extracted = as.vector(q)[mask]
+q.real = as.vector(t(q))
+q.extracted = as.vector(t(q))[mask]
 
 loss = sum(q.real) - sum(q.extracted)
 loss/sum(q.real)
@@ -106,8 +111,9 @@ reduce.covariates <- function(coords, data, q.ref, win.ref) {
   counts = matrix(data = 0, nrow=npixel[1], ncol = npixel[2])
   
   for(i in c(1:length(data))) {
-    col = ceiling(((coords[i,1]-win.ref$xrange[1])/diff(win.ref$xrange))*npixel[2])
+    #convert coordinate to (row,col) indices
     row = ceiling(((coords[i,2]-win.ref$yrange[1])/diff(win.ref$yrange))*npixel[1])
+    col = ceiling(((coords[i,1]-win.ref$xrange[1])/diff(win.ref$xrange))*npixel[2])
     
     reduced[row, col] = (reduced[row, col]*counts[row,col] + data[i])/(counts[row,col] +1)
     counts[row, col] = counts[row, col] + 1
@@ -133,10 +139,30 @@ nocover.vote = ifelse(nocover==0, 0, 1)
 gully = reduce.covariates(data.frame(lds.ppp$x, lds.ppp$y), ifelse(lds.ppp$marks$GULLY=="N", 0, 1), q, hkw)
 gully.vote = ifelse(gully==0, 0, 1)
 
+###############################################################
 ########### 5.5 Distance Matrix derivation and such ###########
+###############################################################
+
+#let's actually make the coordinates 
+x0 <- seq(hkw$xrange[1], hkw$xrange[2], length=spatstat.options()$npixel[2])
+y0 <- seq(hkw$yrange[1], hkw$yrange[2], length=spatstat.options()$npixel[1])
+
+print(length(x0))
+
+#the result of this is expanded row by row for the coords -- need consistency for the mask
+coords.actual = expand.grid(x = x0, y = y0)
+
+#with centroids?
+x0_extended = seq(hkw$xrange[1], hkw$xrange[2], length=spatstat.options()$npixel[2]+1)
+y0_extended <- seq(hkw$yrange[1], hkw$yrange[2], length=spatstat.options()$npixel[1]+1)
+
+x0_centered = x0_extended[1:20]+ 0.5*diff(x0_extended)
+y0_centered = y0_extended[1:20]+ 0.5*diff(y0_extended)
+
+coords.centered = expand.grid(x = x0_centered, y = y0_centered)
 
 #distance matrix from centroids of the grid cells (will need to convert coords to km so just use relative)
-coords.naive = expand.grid(seq(1:dim(q)[1]), seq(1:dim(q)[2]))
+coords.naive = expand.grid(seq(1:dim(q)[2]), seq(1:dim(q)[1]))
 
 #using the mask here - expands column wise not row by row 
 DMat = as.matrix(dist(coords.naive[mask,], method="euclidean", diag=T, upper=T))
@@ -155,8 +181,7 @@ W = solve(W.inv)
 det(W%*%W.inv) #verify 
 
 
-
-#stan copied model from tutorial since i like the covariate management more 
+#stan model 
 ppm_stan <- '
 data{
   int<lower = 1> N;
@@ -186,7 +211,8 @@ model{
         y[s] ~ poisson(mu[s]);  
   } 
   
-  e ~ multi_normal(rep_vector(0,N), sigma_sq*W); 
+  //e ~ multi_normal(rep_vector(0,N), sigma_sq*W); 
+  e ~ normal(0, sigma_sq);
     
   //prior for the noise on CAR 
   sigma_sq ~ inv_gamma(2,2);
@@ -223,7 +249,7 @@ length.norm = (length - mean(length))/sqrt(var(length))
 X = cbind(rep(1,length(slope.norm)), slope.norm, width.norm, head.elevation.norm,
           ele.diff.norm, length.norm, nocover.vote, gully.vote)
 
-#X = cbind(rep(1,length(slope)), slope, width, head.elevation, ele.diff, length, nocover.vote, gully.vote)
+X = cbind(rep(1,length(slope)), slope, width, head.elevation, ele.diff, length, nocover.vote, gully.vote)
 
 N = dim(X)[1]
 p = dim(X)[2]
@@ -232,7 +258,7 @@ stan_data = list(N = N, p = p, X = X, y = q.extracted, W=W)
 
 stan_fit0 <- stan(model_code = ppm_stan,
                   data = stan_data,
-                  chains = 1, warmup = 1000, iter = 8000,
+                  chains = 1, warmup = 1000, iter = 16000,
                   control = list(adapt_delta = 0.999, max_treedepth=13))
 
 
@@ -242,9 +268,16 @@ stan_fit0 <- stan(model_code = ppm_stan,
 beta.chain = rstan::extract(stan_fit0)['beta']
 beta.hat = colMeans(beta.chain$beta)
 
+sigma = rstan::extract(stan_fit0)['sigma_sq']
+mean(sigma$sigma_sq)
+
+#saving these since they took forever
+#save(beta.chain, file="../Rdata/CARModel_beta.Rda")
+#save(sigma, file="../Rdata/CARModel_sigma.Rda")
+
 #recall this is a tiled surface which should in theory predict the realization in our data 
 #no need to be exactly the same, but makes things hard to analyze 
-pred = exp(X%*%beta.hat) 
+pred = exp(X%*%beta.hat) n
 
 x11()
 par(mfrow=c(1,2))
@@ -263,6 +296,8 @@ plot(density(beta.chain$beta[,6]), main="", xlab="Beta5")
 plot(density(beta.chain$beta[,7]), main="", xlab="Beta6")
 plot(density(beta.chain$beta[,8]), main="", xlab="Beta7")
 
+
+plot(density(sigma$sigma), main="", xlab="sigma")
 
 i=4
 plot(seq(1,length(beta.chain$beta[,i])), beta.chain$beta[,i], type='l', xlab="iter", ylab='val')
