@@ -25,6 +25,7 @@ u_NA = union(which(lds_from_2000_with_NA$M_WIDTH == 9999),which(lds_from_2000_wi
 u_NA = union(u_NA,which(lds_from_2000_with_NA$TAILELEV == 9999))
 u_NA = union(u_NA,which(lds_from_2000_with_NA$ELE_DIFF == 9999))
 u_NA = union(u_NA,which(lds_from_2000_with_NA$SLOPE == 9999))
+u_NA = union(u_NA,is.na(lds_from_2000_with_NA$GULLY))
 lds_from_2000=lds_from_2000_with_NA[-u_NA,]
 lds = lds_from_2000
 # remove less important kinds of cover (C and D) and wrong records of A and B
@@ -33,31 +34,7 @@ lds=lds[-cbind(which(lds$COVER=="C"), which(lds$COVER=="D"), which(lds$COVER==" 
 dim(lds)
 # 6556 points
 
-# #number of quadrants
-# n_quadr = 30
-# 
-# spatstat.options(npixel=c(n_quadr,n_quadr))#c(dim[1,2]-dim[1,1],dim[2,2]-dim[2,1]))
-# dim <- rbind(c(801587.1, 859623.4), c(802346, 846054.5))
-# win <- owin(c(dim[1,1],dim[1,2]), c(dim[2,1],dim[2,2]))
-# 
-# y0 <- seq(win$yrange[1], win$yrange[2],
-#           length=spatstat.options()$npixel[2])
-# x0 <- seq(win$xrange[1], win$xrange[2],
-#           length=spatstat.options()$npixel[1])
-
-# p.sp  <- as(lds, "Spatial")  # Create Spatial* object
-# lds.ppp <- as(p.sp, "ppp")      # Create ppp object
-
-lat.long.df <- data.frame(lds$EASTING, lds$NORTHING) 
-coordinates(lat.long.df) <-  ~lds.EASTING + lds.NORTHING
-proj4string(lat.long.df)
-proj4string(lat.long.df) <- CRS("+init=epsg:2326")
-
-head(lat.long.df)
-dist.location <- spTransform(lat.long.df, CRS("+init=epsg:4326"))
-head(dist.location)
-
-head(dist.location@coords)
+n_quadr = 18
 
 # Hong Kong shape
 
@@ -66,29 +43,12 @@ hkw = as.owin(hk)
 hkw = owin(hkw$xrange, hkw$yrange) #the old window preserves boundary info but we want grid 
 hkw
 
-features.drop = c("SLIDE_TYPE", "YEAR_1", "ENTLI_NO") #read data dict 
-feature.mask = !names(lds)%in%features.drop
-lds.ppp = ppp(dist.location@coords[,1], dist.location@coords[,2], hkw, marks=lds[names(lds)[feature.mask]]) #use hk window
-lds.ppp = unique(lds.ppp)
-
-
-#choose a window size preserving the relative dimensions of hk 
-win = hkw
-n_quadr = 50
-r = diff(win$yrange)/diff(win$xrange)
+#choose a hkwdow size preserving the relative dimensions of hk 
+r = diff(hkw$yrange)/diff(hkw$xrange)
 
 spatstat.options(npixel=c(ceiling(n_quadr*r), n_quadr))  #n_quadr is ref for number of cols/x range 
 spatstat.options()$npixel
 
-ref = ppp(lds.ppp$x, lds.ppp$y, win) 
-q <- quadratcount(lds.ppp, ny=spatstat.options()$npixel[1], nx=spatstat.options()$npixel[2])
-dim(q)
-
-# plot the actual number of landslides in each quadrant
-plot(ref)
-plot(q, add=T)
-
-# apply the HK mask on the data
 grid <- makegrid(x=hk)
 grid = spsample(hk, 2500,type="regular")
 coords = grid@coords
@@ -97,17 +57,27 @@ hk_coords.ppp = ppp(coords[,1], coords[,2], hkw)
 hk.q = quadratcount(hk_coords.ppp, ny=spatstat.options()$npixel[1], nx=spatstat.options()$npixel[2])
 
 #define mask as points which are non-zero in the actual shapefile 
-mask = which(as.vector(t(hk.q), )!=0)
-mask
+mask.hk = which(as.vector(t(hk.q), )!=0)
 
-q.real = as.vector(t(q))
-q.extracted = as.vector(t(q))[mask]
 
-loss = sum(q.real) - sum(q.extracted)
-loss/sum(q.real)
+lat.long.df <- data.frame(lds$EASTING, lds$NORTHING) 
+coordinates(lat.long.df) <-  ~lds.EASTING + lds.NORTHING
+proj4string(lat.long.df)
+proj4string(lat.long.df) <- CRS("+init=epsg:2326")
 
-length(q.real)
-length(q.extracted)
+head(lat.long.df)
+dist.location <- spTransform(lat.long.df, CRS("+init=epsg:4326"))
+
+head(dist.location@coords)
+
+features.drop = c("YEAR_1", "ENTLI_NO") #read data dict 
+feature.mask = !names(lds)%in%features.drop
+lds.ppp = ppp(dist.location@coords[,1], dist.location@coords[,2], hkw, marks=lds[names(lds)[feature.mask]]) #use hk window
+lds.ppp = unique(lds.ppp)
+
+ref = ppp(lds.ppp$x, lds.ppp$y, hkw) #using the hk window from mask_generation 
+q <- quadratcount(lds.ppp, ny=spatstat.options()$npixel[1], nx=spatstat.options()$npixel[2])
+dim(q)
 
 
 #visualize 
@@ -118,6 +88,19 @@ plot(hk.q, add=T)
 
 plot(ref, cex = 0.5, pch = "+", main="landslide data")
 plot(q, add=T)
+
+
+mask.data = which(as.vector(t(q))!=0)
+
+q.real = as.vector(t(q))
+q.extracted = as.vector(t(q))[mask.data]
+
+loss = sum(q.real) - sum(q.extracted)
+loss/sum(q.real)
+
+length(q.real)
+length(q.extracted)
+
 
 # extract covariates from data and apply the mask to them before stan
 
@@ -139,45 +122,6 @@ reduce.covariates <- function(coords, data, q.ref, win.ref) {
   return(reduced);
 }
 
-# 
-# define_covariate <- function(northing, easting, npixel = n_quadr, feature){
-#   covar <- matrix(data = 0, nrow = npixel, ncol = npixel)
-#   count <- matrix(data = 0, nrow = npixel, ncol = npixel)
-#   n <- dim(lds)[1]
-#   for (i in c(1:n)){
-#     for(j in c(1:(npixel-1))){
-#       for(z in c(1:(npixel-1))) {
-#         if(northing[i]>y0[j] && northing[i]<y0[j+1]){
-#           if(easting[i]>x0[z] && easting[i]<x0[z+1]){
-#             # update the mean
-#             covar[j,z] = (covar[j,z]*count[j,z] + feature[i])/(count[j,z]+1)
-#             count[j,z] = count[j,z] + 1
-#           }
-#         }
-#       }
-#     }
-#   }
-#   return(covar)
-# }
-# 
-# covar1 <- define_covariate(northing = lds$NORTHING, easting = lds$EASTING, feature = lds$M_WIDTH)
-# covar2 <- define_covariate(northing = lds$NORTHING, easting = lds$EASTING, feature = lds$HEADELEV)
-# covar3 <- define_covariate(northing = lds$NORTHING, easting = lds$EASTING, feature = lds$TAILELEV)
-# covar4 <- define_covariate(northing = lds$NORTHING, easting = lds$EASTING, feature = lds$ELE_DIFF)
-# covar5 <- define_covariate(northing = lds$NORTHING, easting = lds$EASTING, feature = lds$SLOPE)
-
-# # create dummy variable
-# # A: Totally bare of vegetation
-# # B: Partially bare of vegetation
-# A <- which(lds$COVER=="A")   
-# B <- which(lds$COVER=="B")
-# nA <- length(A)
-# nB <- length(B)
-# cover <- rep(0,nA+nB)
-# cover[A] = 1
-# length(cover)
-
-# covar6 <- define_covariate(northing = lds$NORTHING, easting = lds$EASTING, feature = cover)
 
 #covariates 
 slope <- reduce.covariates(data.frame(lds.ppp$x, lds.ppp$y), lds.ppp$marks$SLOPE, q, hkw)
@@ -207,13 +151,13 @@ print(length(y0))
 coords.actual = expand.grid(x = x0, y = y0)
 
 #extracting relevant cells
-slope = as.vector(slope)[mask]
-ele.diff = as.vector(ele.diff)[mask]
-nocover.vote = as.vector(nocover.vote)[mask]
-width = as.vector(width)[mask]
-length = as.vector(length)[mask]
-head.elevation = as.vector(head.elevation)[mask]
-gully.vote = as.vector(gully.vote)[mask]
+slope = as.vector(slope)[mask.data]
+ele.diff = as.vector(ele.diff)[mask.data]
+nocover.vote = as.vector(nocover.vote)[mask.data]
+width = as.vector(width)[mask.data]
+length = as.vector(length)[mask.data]
+head.elevation = as.vector(head.elevation)[mask.data]
+gully.vote = as.vector(gully.vote)[mask.data]
 
 #normalize 
 slope.norm = (slope - mean(slope))/sqrt(var(slope))
