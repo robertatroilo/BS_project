@@ -7,8 +7,10 @@ fname <- "../../ENTLI.gdb.zip"
 landslides = st_read(fname, "ENTLI_Crown")
 
 
-YEARS = c("2016", "2017", "2018")
+#YEARS = c("2016", "2017", "2018")
+YEARS= c("2019")
 lds_from_2000_with_NA = landslides[which(landslides$YEAR_1 %in% YEARS),]
+#lds_from_2000_with_NA = landslides[which(landslides$YEAR_1 > "2000"),]
 
 
 ######## 2. DATA  CLEANING ##########
@@ -20,6 +22,13 @@ u_NA = union(u_NA,is.na(lds_from_2000_with_NA$GULLY))
 
 lds_from_2000=lds_from_2000_with_NA[-u_NA,]
 lds = lds_from_2000
+
+#quick annual contribution plot 
+#years = as.factor(lds$YEAR_1)
+#x11()
+#table(years)
+#barplot(table(years), xlab="Year", ylab="recorded landslides")
+
 
 ########## 2.5 chris code for utm to lon/lat ##########
 #chris is insanely productive holy 
@@ -48,6 +57,9 @@ dim(q)
 
 plot(ref)
 plot(q, add=T)
+
+#complete spatial randomness? -- not really valid since some cells aren't even hong kong 
+quadrat.test(q)
 
 ########## sample reduction; we can either use hk mask OR only keep cells which are in the sample \
 #before we kept all the samples which were inside HK but instead we should really only consider our samples
@@ -123,66 +135,88 @@ DMat = as.matrix(dist(coords.tess[mask.data,], method="euclidean", diag=T, upper
 #  where.condition = (DMat[i,]%in%sort(DMat[i,])[1:4])
 #}
 
+########## CAR ##################
 #now derive the CAR matrix we employ (from notes on geostats) -> this isnt true adjacency but its fine 
-dmat.quantile = quantile(as.vector(DMat), 0.05)
+dmat.quantile = quantile(as.vector(DMat), 0.1)
 A = ifelse(DMat<=dmat.quantile, 1, 0)
 diag(A) = 0
 
 Dw = diag(rowSums(A))
 
-rho = 0.9
+rho = 0.5
 W.inv = Dw - rho*A
 W = solve(W.inv)
 
 det(W%*%W.inv) #verify 
-
+#################################
 
 #stan model 
 ppm_stan <- '
+functions{
+    matrix GP(matrix D, real sigma_sq, real scale, real delta) {
+        int N = dims(D)[1];
+        matrix[N, N] K;
+        for (i in 1:(N-1)) {
+          K[i, i] = sigma_sq + delta;
+          for (j in (i + 1):N) {
+            K[i, j] = sigma_sq * exp(- D[i,j] / scale );
+            K[j, i] = K[i, j];
+          }
+        }
+        K[N, N] = sigma_sq + delta;
+        return K;
+    }
+}
 data{
   int<lower = 1> N;
   int<lower = 1> p;
-  matrix[N, p] X; //covariates
-  matrix[N,N] W; //CAR model 
+  matrix[N,p] X; //covariates
+  matrix[N,N] DMat;
   int<lower = 0> y[N];
 }
 parameters{
+  //regression coefficients 
   vector[p] beta;
-  vector<lower=0>[p] sigma_beta;
+  real<lower=0> nu_sq; //changed it to one variance for the regression coefs 
   
-  // W standard deviation parameter -- CAR
-  vector[N] e;
-  real<lower=0> sigma_sqCAR;
+  //independent noise
+  vector[N] eps;
+  real<lower=0> tau_sq;
   
-  //random noise independent
+  //spatial noise 
   vector[N] w;
-  real<lower=0> sigma_sqI;
+  real<lower=0> sigma_sq;
+  real<lower=0> scale;
 }
 
 transformed parameters {
     vector[N] mu;
     for(i in 1:N) {
-      mu[i] = exp(row(X, i) * beta + e[i] + w[i]); //link 
+      mu[i] = exp(row(X, i) * beta + w[i] + eps[i]); //link 
     }
 }
 
 model{
+  //spatial noise 
+  matrix[N,N] SIGMA;
+  SIGMA = GP(DMat, sigma_sq, scale, 0.01);
+  w ~ multi_normal(rep_vector(0,N), SIGMA);
+  
   for (s in 1:N) {
         y[s] ~ poisson(mu[s]);  
   } 
   
-  e ~ multi_normal(rep_vector(0,N), sigma_sqCAR*W); 
-  w ~ normal(0, sigma_sqI); 
-    
-  //prior for the noises 
-  sigma_sqCAR ~ inv_gamma(0.01,0.01); //kinda from lecture notes
-  sigma_sqI ~ inv_gamma(1,1);
+  //independent noise 
+  eps ~ normal(0, tau_sq); 
   
   //priors for the coefficients
-  for (j in 1:p) {
-        beta[j] ~ normal(0.0, sigma_beta);
-        sigma_beta[j] ~ inv_gamma(1, 1);
-    }
+  beta ~ normal(0, nu_sq);
+    
+  //lpdfs for the tau^2, sigma^2, scale, nu^2 (4)
+  target += cauchy_lpdf(sigma_sq | 0, 1); //tutorial - HC noise 
+  target += inv_gamma_lpdf(scale | 3.884416, 0.77454); //tutorial
+  target += inv_gamma_lpdf(tau_sq | 1, 1); //me
+  target += inv_gamma_lpdf(nu_sq | 1, 1); //me
 }
 generated quantities {
   }
@@ -207,8 +241,7 @@ length.norm = (length - mean(length))/sqrt(var(length))
 
 #fitting (and praying)
 #normalized covariates
-X = cbind(rep(1,length(q.extracted)), slope.norm, width.norm, head.elevation.norm,
-          ele.diff.norm, length.norm, vegetation.vote, erosion.vote)
+X = cbind(rep(1,length(q.extracted)), slope.norm, head.elevation.norm, vegetation.vote, erosion.vote)
 
 #non-normalized covariates
 #X = cbind(rep(1,length(q.extracted)), slope, width, head.elevation, ele.diff, length, vegetation.vote, erosion.vote)
@@ -216,22 +249,99 @@ X = cbind(rep(1,length(q.extracted)), slope.norm, width.norm, head.elevation.nor
 N = dim(X)[1]
 p = dim(X)[2]
 
-stan_data = list(N = N, p = p, X = X, y = q.extracted, W=W)
+stan_data = list(N = N, p = p, X = X, y = q.extracted, DMat = DMat)
 
 stan_fit0 <- stan(model_code = ppm_stan,
                   data = stan_data,
-                  chains = 1, warmup = 1000, iter = 6000,
+                  chains = 1, warmup = 1000, iter = 8000,
                   control = list(adapt_delta = 0.999, max_treedepth=13))
 
 
+#saving the model fit so we can relaod later and extract everything
+#saveRDS(stan_fit0, file = "./expkernel30.RData")
+stan_fit0 = readRDS("./expkernel30.RData")
 
 
-############# plotting the chains ###############3
+###################################################################
+################# POSTERIOR STUFF #################################
+###################################################################
+
 beta.chain = rstan::extract(stan_fit0)['beta']
 beta.hat = colMeans(beta.chain$beta)
 
-sigma = rstan::extract(stan_fit0)['sigma_sq']
-sigma.mean = mean(sigma$sigma_sq)
+#sigma
+sigma_sq = rstan::extract(stan_fit0)['sigma_sq']
+sigma_sq.mean = mean(sigma_sq$sigma_sq)
+
+#tau
+tau_sq = rstan::extract(stan_fit0)['tau_sq']
+tau_sq.mean = mean(tau_sq$tau_sq)
+
+#phi
+phi = rstan::extract(stan_fit0)['scale']
+phi.mean = mean(phi$scale)
+
+##################### BASIC KRIGING #######################
+#1. save old data 
+q.ref = q.extracted
+mu.ref = X%*%beta.hat
+X.ref = X
+coords.ref = coords.tess[mask.data,]
+mask.ref = mask.data
+
+#2. generate new data by rerunning above code with only years 2019
+q.new = q.extracted
+mu.new = X%*%beta.hat
+X.new = X
+coords.new = coords.tess[mask.data,]
+mask.new = mask.data
+
+
+#2.5 quantify number of new locations we're predicting at -> 25% 
+sum(!mask.new%in%mask.ref)/length(mask.new)
+
+#generate the covariance matrix 
+coords.augmented = rbind(coords.ref, coords.new)
+DMat.augmented = as.matrix(dist(coords.augmented, method="euclidean", diag=T, upper=T))
+dim(DMat.augmented)
+
+#sum(DMat.augmented[1:166,1:166] != DMat) #sanity check that upper left block equals old distance matrix
+
+#convert DMat to kernel distances using phi and sigma_sq
+kernel = function(d){return (sigma_sq.mean*exp(-d/phi.mean))}
+DMat.augmented = kernel(DMat.augmented)
+
+#add the noise 
+C = DMat.augmented + diag(rep(tau_sq.mean+0.01), dim(coords.augmented)[1])
+
+#extract block matrices 
+C11 = C[1:length(q.ref), 1:length(q.ref)]
+C12 = C[1:length(q.ref), (length(q.ref)+1):dim(coords.augmented)[1]]
+C21 = C[(length(q.ref)+1):dim(coords.augmented)[1], 1:length(q.ref)]
+C22 = C[(length(q.ref)+1):dim(coords.augmented)[1], (length(q.ref)+1):dim(coords.augmented)[1]]
+  
+#prediction?
+pred = mu.new + C21%*%solve(C11)%*%(log(q.ref)-mu.ref)
+pred = ceiling(exp(pred)/3)
+
+#compare to real one 
+x11()
+par(mfrow=c(1,2))
+plot(log(pred))
+plot(log(q.new))
+
+
+
+x11()
+par(mfrow=c(2,1))
+plot(X%*%beta.hat, ylim=c(0,max(log(q.extracted))))
+plot(log(q.extracted))
+
+
+
+
+
+
 
 
 x11()
@@ -246,13 +356,6 @@ plot(density(beta.chain$beta[,7]), main="", xlab="Beta6")
 plot(density(beta.chain$beta[,8]), main="", xlab="Beta7")
 
 
-plot(density(sigma$sigma), main="", xlab="sigma")
-
-#some predictions 
-pred = ceiling(exp(X%*%beta.hat + sigma.mean)) #our predictoins
-par(mfrow = c(1,2))
-plot(log(pred))
-plot(log(q.extracted))
-
-
+plot(density(sigma_sq$sigma_sq), main="", xlab="sigma")
+plot(density(tau_sq$tau_sq), main="", xlab="tau")
 
