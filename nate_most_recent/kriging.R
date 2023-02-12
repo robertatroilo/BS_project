@@ -7,7 +7,7 @@ fname <- "../../ENTLI.gdb.zip"
 landslides = st_read(fname, "ENTLI_Crown")
 
 
-#YEARS = c("2016", "2017", "2018")
+YEARS = c("2016", "2017", "2018")
 YEARS= c("2019")
 lds_from_2000_with_NA = landslides[which(landslides$YEAR_1 %in% YEARS),]
 #lds_from_2000_with_NA = landslides[which(landslides$YEAR_1 > "2000"),]
@@ -55,7 +55,8 @@ ref = ppp(lds.ppp$x, lds.ppp$y, hkw) #using the hk window from mask_generation
 q <- quadratcount(lds.ppp, ny=spatstat.options()$npixel[1], nx=spatstat.options()$npixel[2])
 dim(q)
 
-plot(ref)
+x11()
+plot(ref, add=T, col='red', pch=20)
 plot(q, add=T)
 
 #complete spatial randomness? -- not really valid since some cells aren't even hong kong 
@@ -224,19 +225,19 @@ generated quantities {
 
 #extracting relevant cells
 slope = as.vector(t(slope))[mask.data]
-ele.diff = as.vector(t(ele.diff))[mask.data]
 vegetation.vote = as.vector(t(vegetation.vote))[mask.data]
-width = as.vector(t(width))[mask.data]
-length = as.vector(t(length))[mask.data]
 head.elevation = as.vector(t(head.elevation))[mask.data]
 erosion.vote = as.vector(t(erosion.vote))[mask.data]
 
+#normalization hyper params to fit new data DON'T RE RUN FOR NEW DATA 
+s.mu = mean(slope)
+s.std = sqrt(var(slope))
+h.mu = mean(head.elevation)
+h.std = sqrt(var(head.elevation))
+
 #normalize 
-slope.norm = (slope - mean(slope))/sqrt(var(slope))
-width.norm = (width - mean(width))/sqrt(var(width))
-head.elevation.norm = (head.elevation - mean(head.elevation))/sqrt(var(head.elevation))
-ele.diff.norm = (ele.diff - mean(ele.diff))/sqrt(var(ele.diff))
-length.norm = (length - mean(length))/sqrt(var(length))
+slope.norm = (slope - s.mu)/s.std
+head.elevation.norm = (head.elevation - h.mu)/h.std
 
 
 #fitting (and praying)
@@ -320,30 +321,35 @@ C12 = C[1:length(q.ref), (length(q.ref)+1):dim(coords.augmented)[1]]
 C21 = C[(length(q.ref)+1):dim(coords.augmented)[1], 1:length(q.ref)]
 C22 = C[(length(q.ref)+1):dim(coords.augmented)[1], (length(q.ref)+1):dim(coords.augmented)[1]]
   
-#prediction?
+#prediction in the naive way 
 pred = mu.new + C21%*%solve(C11)%*%(log(q.ref)-mu.ref)
 pred = ceiling(exp(pred)/3)
 
+#MC estimate using the updated distribution
+library(MASS)
+N=1000
+samples = mvrnorm(n = N, 
+                  mu = mu.new + C21%*%solve(C11)%*%(log(q.ref)-mu.ref),
+                  Sigma = C22 - C21%*%solve(C11)%*%C12)
+
+pred = colSums(exp(samples)/3)/N
+pred = round(pred)
+
+
 #compare to real one 
 x11()
-par(mfrow=c(1,2))
-plot(log(pred))
-plot(log(q.new))
+par(mfrow=c(1,3))
+of_interest = ifelse(!mask.new%in%mask.ref, 'red', 'blue')
+plot(pred, col=of_interest, pch = 19)
+plot(q.new, col=of_interest, pch=19)
+plot(round(exp(mu.new)), col=of_interest, pch=19)
+
+sum(pred!=q.new)/length(pred)
+sum(pred)
 
 
 
-x11()
-par(mfrow=c(2,1))
-plot(X%*%beta.hat, ylim=c(0,max(log(q.extracted))))
-plot(log(q.extracted))
-
-
-
-
-
-
-
-
+##################### plotting the chains ###############
 x11()
 par(mfrow=c(4,2))
 plot(density(beta.chain$beta[,1]), main="", xlab="Beta0")
