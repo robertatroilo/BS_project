@@ -451,4 +451,9 @@ plot(intensity(q, image=TRUE), main=NULL, las=1, zlim=c(0.1,max(intensity(q)))) 
 plot(q, add = T)
 plot(HK_outline, add = T)
 
+# see the difference in scaling
+plot(predicted.q)
+plot(q, add = T)
+
+
 

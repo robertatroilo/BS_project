@@ -1,6 +1,6 @@
 source("./mask_generation.R")
 
-fname <- "../../ENTLI.gdb.zip"
+fname <- "../ENTLI.gdb.zip"
 
 ######## 1. LOADING IN THE DATA  ##########
 # consider landslides since 2000
@@ -8,7 +8,7 @@ landslides = st_read(fname, "ENTLI_Crown")
 
 
 YEARS = c("2016", "2017", "2018")
-YEARS= c("2019")
+#YEARS = c("2019")
 lds_from_2000_with_NA = landslides[which(landslides$YEAR_1 %in% YEARS),]
 #lds_from_2000_with_NA = landslides[which(landslides$YEAR_1 > "2000"),]
 
@@ -259,8 +259,8 @@ stan_fit0 <- stan(model_code = ppm_stan,
 
 
 #saving the model fit so we can relaod later and extract everything
-#saveRDS(stan_fit0, file = "./expkernel30.RData")
-stan_fit0 = readRDS("./expkernel30.RData")
+saveRDS(stan_fit0, file = "./expkernel40.RData")
+#stan_fit0 = readRDS("./expkernel30.RData")
 
 
 ###################################################################
@@ -364,4 +364,154 @@ plot(density(beta.chain$beta[,8]), main="", xlab="Beta7")
 
 plot(density(sigma_sq$sigma_sq), main="", xlab="sigma")
 plot(density(tau_sq$tau_sq), main="", xlab="tau")
+
+
+
+
+
+##################### visualising the predictions ###############
+
+
+
+# We create a vector that we only populate on the indexes different from 0
+n_rows = dim(q)[1]
+n_cols = dim(q)[2]
+
+pred_matrix = rep(0, n_rows * n_cols)
+
+i = 1
+for(index in which(q.real > 0)){
+  pred_matrix[index] = pred[i]
+  i=i+1
+}
+length(pred_matrix)
+length(pred_matrix)/n_cols
+
+# Turn vector into a matrix
+pred_matrix = matrix(pred_matrix, nrow = n_rows, byrow = T)
+
+# Check that the dimensions match
+dim(pred_matrix)
+dim(q)
+
+# plot everything
+image(pred_matrix, useRaster=TRUE, axes=FALSE)
+image(q, useRaster=TRUE, axes=FALSE)
+
+# Can't add the outline 
+# plot(HK_outline)
+
+# plot(intensity(q, image=TRUE), main=NULL, las=1, zlim=c(0.1,max(intensity(q))))  # Plot density raster
+# plot(HK_outline, add = T)
+
+
+
+colnames(pred_matrix) <- colnames(q)
+rownames(pred_matrix) <- rownames(q)
+
+
+
+
+
+# WE RECREATE THE PPP
+
+
+prediction_vector = data.frame(x = NULL, y = NULL)
+
+# go through all line, all column, all observation in each cell
+for(y in 1:length(colnames(pred_matrix))){
+  for(x in 1:length(rownames(pred_matrix))){
+    if(pred_matrix[x, y])
+      for(i in 1:pred_matrix[x, y]){
+        pt = data.frame(x = rownames(pred_matrix)[x], y = colnames(pred_matrix)[y])
+        prediction_vector = rbind(prediction_vector, pt)
+      }
+    
+  }
+}
+
+prediction_vector
+
+regex_ = '\\)'
+
+test = prediction_vector
+test$x = sapply(prediction_vector$x,  gsub, pattern = regex_, replacement = "\\]" )
+test$y = sapply(prediction_vector$y,  gsub, pattern = regex_, replacement = "\\]" )
+test
+
+test$x = sapply(test$x,  gsub, pattern = "\\]", replacement = "" )
+test$y = sapply(test$y,  gsub, pattern = "\\]", replacement = "" )
+test$x = sapply(test$x,  gsub, pattern = "\\[", replacement = "" )
+test$y = sapply(test$y,  gsub, pattern = "\\[", replacement = "" )
+test
+
+
+
+# put everything to the centroids of the tiles
+
+# X's
+upper_x = sapply(test$x,  str_split_i, pattern = ",", simplify = T, i = 1) 
+upper_x = sapply(upper_x,  as.double) 
+upper_x
+
+lower_x = sapply(test$x,  str_split_i, pattern = ",", simplify = T, i = 2) 
+lower_x = sapply(lower_x,  as.double) 
+lower_x
+
+centroids_x = (upper_x + lower_x)/2
+centroids_x
+
+# Y's
+upper_y = sapply(test$y,  str_split_i, pattern = ",", simplify = T, i = 1) 
+upper_y = sapply(upper_y,  as.double) 
+upper_y
+
+lower_y = sapply(test$y,  str_split_i, pattern = ",", simplify = T, i = 2) 
+lower_y = sapply(lower_y,  as.double) 
+lower_y
+
+centroids_y = (upper_y + lower_y)/2
+centroids_y
+
+
+
+
+# I don't know why i had to invert x & y
+predicted_coord = data.frame(x = centroids_y, y = centroids_x)
+
+# every predicted landslide has value 1
+predicted_dummy_ones = data.frame(rep(1, dim(predicted_coord)[1])) 
+
+predicted_spatial_points_df = SpatialPointsDataFrame(coords = predicted_coord, data = predicted_dummy_ones)
+predicted.ppp = as.ppp(predicted_spatial_points_df)
+
+# Check if we have the same window 
+Window(ref)
+Window(predicted.ppp)
+
+plot(predicted.ppp)
+
+# HK outline data
+HK_map <- getData("GADM",country='HKG', level = 1)
+HK_outline = st_as_sf(HK_map)$geometry
+
+# Now we can vizualize quadrants 
+predicted.q <- quadratcount(predicted.ppp, ny=spatstat.options()$npixel[1], nx=spatstat.options()$npixel[2])
+plot(predicted.q)
+plot(HK_outline, add = T)
+
+
+# predictions but messy
+plot(intensity(predicted.q, image=TRUE), main=NULL, las=1, zlim=c(0.1,max(intensity(q))))  # Plot density raster
+plot(predicted.q, add = T)
+plot(HK_outline, add = T)
+
+# original plos but messy
+plot(intensity(q, image=TRUE), main=NULL, las=1, zlim=c(0.1,max(intensity(q))))  # Plot density raster
+plot(q, add = T)
+plot(HK_outline, add = T)
+
+# see the difference in scaling
+plot(predicted.q)
+plot(q, add = T)
 
