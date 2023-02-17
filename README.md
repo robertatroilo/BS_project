@@ -95,7 +95,7 @@ Using now the multivariate normal updates at the log scale for the intensity sur
 <img src="./media/predictions.png" height="300" alt="pred"/>
 </p>
 
-Plotted above are the predictions on the test data, with the 90% confidence intervals represented by the dashed red lines. Making the appropriate Bonferroni corrections we estimate that with probability 1-$\alpha$, $\alpha = 10$%, that anywhere from 0 to 1603 landslides will occur in the year 2019.  Taking the estimation in expectation we predict that 111 landslides will occur - a value consistent with the real number being 105. 
+Plotted above are the predictions on the test data, with the 90% confidence intervals represented by the dashed red lines. Making the appropriate Bonferroni corrections we estimate that with probability 90% that anywhere from 0 to 1603 landslides will occur in the year 2019.  Taking the estimation in expectation we predict that 111 landslides will occur - a value consistent with the real number being 105. 
 
 The confidence intervals for the predictive model could be tightened through the use of more informative covariates such as regional precipitation measurements, but despite best efforts we could not include such data in the modelling.  This represents a potential next direction for the modelling efforts. 
 
