@@ -45,11 +45,11 @@ Through relevant Bayesian modelling which uncovers influential covariates in our
 <a name="model"/>
 
 ## Model 
-We consider a Cox generalized linear model with link function given by the exponential to model the intensity surface which drives landslide occurences, $Y(s_{i})$, in each grid cell, $s_{i}\in D\subset \mathbb{R}^{2}$. Essentially this intensity surfce takes into account underlying geospatial covariates along with assumed noise given by measurement errors and influences due to spatial proximity, and maps them to a scalar denoting the rate of landslide occurences in the given cell. 
+We consider a Cox generalized linear model with link function given by the exponential to model the intensity surface which drives landslide occurences, Y(sᵢ), in each grid cell, sᵢ ∈ D ⊆ ℝ². Essentially this intensity surfce takes into account underlying geospatial covariates along with assumed noise given by measurement errors and influences due to spatial proximity, and maps them to a scalar denoting the rate of landslide occurences in the given cell. 
 
-We assume an exponential covariance function, $\rho$, though one can certainly consider a CAR formulation in which the sparsity of the proximity matrix allows for faster computations at higher levels of grid refinement. 
+We assume an exponential covariance function, ρ, though one can certainly consider a CAR formulation in which the sparsity of the proximity matrix allows for faster computations at higher levels of grid refinement. 
 
-$$\begin{align*}Y(s_{i}) | \lambda &\sim Po(\lambda(s_{i}))\\\\\\
+<!-- $$\begin{align*}Y(s_{i}) | \lambda &\sim Po(\lambda(s_{i}))\\\\\\
 \log \lambda(s_{i}) | \beta, w, \epsilon &= X(s_{i})\beta + w(s_{i}) + \epsilon(s_{i})\\\\\\
 \beta | \nu &\sim \mathcal{N}(\textbf{0}, \nu^{2} I_{k+1})\\\\\\
 \epsilon(s_{1}), \epsilon(s_{2}), ... \epsilon(s_{n}) | \tau^{2}&\overset{iid}{\sim} \mathcal{N}(0, \tau^{2})\\\\\\
@@ -57,7 +57,26 @@ $$\begin{align*}Y(s_{i}) | \lambda &\sim Po(\lambda(s_{i}))\\\\\\
 \tau^{2} &\sim inv-gamma(1,1)\\\\\\
 \nu^{2} &\sim inv-gamma(1,1)\\\\\\
 \sigma^{2} &\sim \mathcal{HC}(0,1)\\\\\\
-\phi &\sim inv-gamma(4,1)\end{align*}$$
+\phi &\sim inv-gamma(4,1)\end{align*}$$ -->
+
+Y(sᵢ) | λ ~ Poisson(λ(sᵢ))
+
+log λ(sᵢ) | β, w, ε = X(sᵢ)·β + w(sᵢ) + ε(sᵢ)
+
+β | ν ~ 𝓝(0, ν²·Iₖ₊₁)
+
+ε(s₁), ε(s₂), …, ε(sₙ) | τ² ~ iid 𝓝(0, τ²)
+
+w | σ², ϕ ~ 𝓝ₙ(0, σ²·ρ(·; ϕ))
+
+τ² ~ Inv-Gamma(1, 1)
+
+ν² ~ Inv-Gamma(1, 1)
+
+σ² ~ 𝓗𝓒(0, 1)
+
+ϕ ~ Inv-Gamma(4, 1)
+
 
 Data used to train the model consists of aggregated landslide counts in the grid cells defining Hong Kong.  These labels - and the underlying features - are highly subjective to the hyperparameter which controls the grid refinement.  To choose grid dimensions which provide an adequate trade-off between covariate inhomogeneity and cell granularity we plot elbow curves of the within sum of squares for covariates in the cells and make an informed choice. 
 
